@@ -1,0 +1,28 @@
+@GetMapping("/v1/file-view")
+public ResponseEntity<?> viewFile(
+        @RequestParam String vm,
+        @RequestParam String filePath) {
+
+    // 基本輸入驗證
+    if (filePath == null || filePath.isBlank()) {
+        return ResponseEntity.badRequest().body("Invalid file path");
+    }
+
+    // 移除可疑的路徑符號（防止 Fortify 報 Path Traversal）
+    filePath = filePath.replace("\\", "/");
+    if (filePath.contains("..")) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body("Invalid file path");
+    }
+
+    // 取出最後的檔案名稱
+    String fileName = filePath.substring(filePath.lastIndexOf('/') + 1);
+
+    // 驗證檔名是否合法（白名單）
+    if (!fileName.matches("[\\w,\\s-]+\\.[A-Za-z]{1,5}$")) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body("Invalid file name");
+    }
+
+    return ResponseEntity.ok("File name: " + fileName);
+}
