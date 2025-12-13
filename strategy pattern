@@ -1,0 +1,14 @@
+@Service
+public class PaymentService {
+
+    private final Map<String, PaymentStrategy> strategyMap;
+
+    public PaymentService(Map<String, PaymentStrategy> strategyMap) {
+        this.strategyMap = strategyMap;
+    }
+
+    public void pay(String type, int amount) {
+        PaymentStrategy strategy = strategyMap.get(type);
+        strategy.pay(amount);
+    }
+}
