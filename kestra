@@ -1,0 +1,642 @@
+https://chatgpt.com/share/69fff4fe-b494-83e8-91f6-6ab333e5ffb1
+
+
+你一定要加 Success Rate。
+因為：
+
+> 「系統有在跑」≠「系統是成功的」
+
+很多時候：
+
+* queue 正常
+* worker 正常
+* CPU 正常
+
+但 flow 全部 fail。
+
+所以 Success Rate 是 Executive Dashboard 最核心 KPI 之一。
+
+---
+
+# Kestra Success Rate 怎麼做
+
+你目前 metrics 沒有直接提供：
+
+```text
+success_count
+failed_count
+```
+
+所以通常有兩種做法：
+
+---
+
+# 方法 1（推薦）
+
+# 用 ended status labels 計算
+
+很多 Kestra metrics 其實會帶：
+
+```text
+state="SUCCESS"
+state="FAILED"
+```
+
+例如：
+
+```text
+kestra_worker_ended_count_total
+```
+
+你可以先確認：
+
+```promql id="v55k8m"
+kestra_worker_ended_count_total
+```
+
+Grafana Explore 看 labels。
+
+如果有：
+
+```text
+state=SUCCESS
+state=FAILED
+```
+
+那就很好做。
+
+---
+
+# Success Rate（推薦寫法）
+
+```promql id="dhn6x0"
+(
+sum(rate(kestra_worker_ended_count_total{state="SUCCESS"}[5m]))
+/
+sum(rate(kestra_worker_ended_count_total[5m]))
+) * 100
+```
+
+---
+
+# Failure Rate
+
+```promql id="1f6e7v"
+(
+sum(rate(kestra_worker_ended_count_total{state="FAILED"}[5m]))
+/
+sum(rate(kestra_worker_ended_count_total[5m]))
+) * 100
+```
+
+---
+
+# 如果是 execution level
+
+比 task 更高層。
+
+通常更適合 KPI。
+
+```promql id="ns9wtw"
+(
+sum(rate(kestra_executor_execution_end_count_total{state="SUCCESS"}[5m]))
+/
+sum(rate(kestra_executor_execution_end_count_total[5m]))
+) * 100
+```
+
+---
+
+# 我推薦你看哪個？
+
+---
+
+## Task Success Rate
+
+看：
+
+> infrastructure 健康
+
+例如：
+
+* worker
+* script
+* container
+* infra
+
+---
+
+## Execution Success Rate（更重要）
+
+看：
+
+> business workflow 是否成功
+
+通常 management / SRE 會更看這個。
+
+---
+
+# Dashboard 設計（推薦）
+
+---
+
+# Executive Dashboard
+
+---
+
+## A. Execution Success Rate（最重要）
+
+Panel:
+
+* Stat
+* 大字體
+
+PromQL:
+
+```promql id="l7v3tb"
+(
+sum(rate(kestra_executor_execution_end_count_total{state="SUCCESS"}[5m]))
+/
+sum(rate(kestra_executor_execution_end_count_total[5m]))
+) * 100
+```
+
+Threshold:
+
+| 範圍     | 顏色 |
+| ------ | -- |
+| > 99%  | 綠  |
+| 95~99% | 黃  |
+| <95%   | 紅  |
+
+---
+
+## B. Failed Executions
+
+```promql id="8bhqyf"
+sum(rate(kestra_executor_execution_end_count_total{state="FAILED"}[5m]))
+```
+
+Panel:
+
+* Time series
+
+這可以看到：
+
+> fail spike
+
+---
+
+## C. Success vs Failed
+
+```promql id="gm5n3u"
+sum(rate(kestra_executor_execution_end_count_total{state="SUCCESS"}[5m]))
+```
+
+```promql id="h4hgrg"
+sum(rate(kestra_executor_execution_end_count_total{state="FAILED"}[5m]))
+```
+
+兩條線。
+
+非常容易看出 incident。
+
+---
+
+# 很重要的一件事
+
+# 「沒有 state label 怎麼辦？」
+
+有些版本的 Kestra metrics 不會 expose state label。
+
+這時：
+
+你需要：
+
+---
+
+# 方法 2
+
+# 用 logs / Elasticsearch / Loki 做 success rate
+
+例如：
+
+```text
+execution finished SUCCESS
+execution finished FAILED
+```
+
+然後：
+
+Grafana Loki：
+
+```logql id="7l4t3j"
+sum(rate({app="kestra"} |= "SUCCESS" [5m]))
+```
+
+---
+
+# 我會怎麼建議（Production）
+
+真正 Production 我通常會做：
+
+| 指標             | 來源                |
+| -------------- | ----------------- |
+| Queue lag      | Prometheus        |
+| Worker pending | Prometheus        |
+| JVM            | Prometheus        |
+| Success rate   | Logs / ELK / Loki |
+| Error Top N    | Logs              |
+
+因為：
+
+> logs 才有真正完整的 business status
+
+---
+
+# 最後推薦你真正必看的 KPI
+
+如果只能留 6 個：
+
+---
+
+# Executive KPI
+
+```text id="g8j6nf"
+Execution Success Rate
+Pending Jobs
+Queue Lag
+Execution Throughput
+DB Query Latency
+GC Pause
+```
+
+這六個基本就是：
+
+> Kestra SRE Dashboard MVP。
+
+
+
+--------------------
+
+這是理解 Kestra 架構最重要的一題之一。
+
+很多人一開始會覺得：
+
+> 「不都是在跑 task 嗎？」
+
+但其實：
+
+```text id="z9a4zd"
+Executor = 大腦（負責 orchestration）
+Worker   = 工人（真正執行 task）
+```
+
+這樣理解會最快。
+
+---
+
+# 用「餐廳」比喻
+
+---
+
+## Executor = 店長 / 調度中心
+
+負責：
+
+* 接訂單
+* 決定流程
+* 安排順序
+* 決定下一步做什麼
+* retry
+* timeout
+* dependency
+* state transition
+
+但：
+
+❌ 不親自煮菜
+
+---
+
+## Worker = 廚師
+
+負責：
+
+* 真正執行工作
+* 跑 script
+* call API
+* 跑 Docker
+* 跑 Python
+* 跑 shell
+* 跑 Spark
+
+但：
+
+❌ 不知道整體 workflow
+
+只知道：
+
+```text id="q1h6mp"
+「老闆叫我做這件事」
+```
+
+---
+
+# 在 Kestra Flow 裡怎麼運作
+
+例如：
+
+```yaml id="f67j9g"
+tasks:
+  - id: extract
+    type: io.kestra.plugin.scripts.shell.Commands
+
+  - id: transform
+    dependsOn:
+      - extract
+
+  - id: load
+    dependsOn:
+      - transform
+```
+
+---
+
+# 執行流程
+
+---
+
+## Step 1：Scheduler
+
+發現：
+
+```text id="iut5ff"
+「這個 flow 該跑了」
+```
+
+建立 execution。
+
+---
+
+## Step 2：Executor
+
+Executor 讀 flow。
+
+它會思考：
+
+```text id="9yis3e"
+先跑 extract
+```
+
+然後把 job 丟給 Worker。
+
+---
+
+## Step 3：Worker
+
+Worker 真正執行：
+
+```bash id="j8dkv4"
+python ETL.py
+```
+
+或：
+
+```bash id="pslhh8"
+docker run ...
+```
+
+---
+
+## Step 4：Worker 回報結果
+
+```text id="9h1d2y"
+SUCCESS
+```
+
+或：
+
+```text id="l1fj4r"
+FAILED
+```
+
+---
+
+## Step 5：Executor 再決定下一步
+
+如果成功：
+
+```text id="49d4wr"
+跑 transform
+```
+
+如果失敗：
+
+```text id="6j2o6o"
+retry?
+fail flow?
+trigger alert?
+```
+
+---
+
+# 所以兩者核心差異
+
+|                 | Executor      | Worker                |
+| --------------- | ------------- | --------------------- |
+| 角色              | Orchestration | Execution             |
+| 功能              | 控制流程          | 執行 task               |
+| 是否跑程式           | 很少            | 會                     |
+| 是否懂 DAG         | 會             | 不會                    |
+| 是否管理 retry      | 會             | 不會                    |
+| 是否管理 dependency | 會             | 不會                    |
+| 是否耗 CPU         | 較低            | 高                     |
+| 是否耗記憶體          | 較低            | 高                     |
+| scaling 方式      | 少量即可          | 通常大量 horizontal scale |
+
+---
+
+# 為什麼要拆開？
+
+因為：
+
+```text id="v6n1vq"
+「控制流程」跟「執行工作」是兩種完全不同負載
+```
+
+---
+
+# Executor 特性
+
+通常：
+
+* CPU 低
+* memory 低
+* 高 coordination
+* 高 state management
+
+像：
+
+* Airflow Scheduler
+* Temporal Frontend
+* Argo Controller
+
+---
+
+# Worker 特性
+
+通常：
+
+* CPU 高
+* memory 高
+* IO 高
+* container 高
+
+因為：
+
+* 跑 Spark
+* 跑 Docker
+* 跑 Python
+* 跑 API
+
+---
+
+# Production 常見架構
+
+---
+
+# 小型環境
+
+```text id="exes9e"
+1 Executor
+1~2 Workers
+```
+
+---
+
+# 中大型環境
+
+```text id="m0mjlwm"
+2~3 Executors
+10~100 Workers
+```
+
+因為：
+
+Executor 不需要很多。
+
+但 Worker 很吃資源。
+
+---
+
+# 所以你會看到 Metrics 完全不同
+
+---
+
+# Executor Metrics
+
+重點：
+
+```text id="r1ot6l"
+execution duration
+execution state
+resubmit
+orchestration delay
+```
+
+因為它在管理流程。
+
+---
+
+# Worker Metrics
+
+重點：
+
+```text id="7o0f7z"
+running jobs
+pending jobs
+thread usage
+task duration
+queue duration
+```
+
+因為它在幹活。
+
+---
+
+# 哪個掛掉比較嚴重？
+
+---
+
+## Worker 掛掉
+
+影響：
+
+```text id="h83wcx"
+task 跑不動
+```
+
+但：
+
+* queue 還活著
+* orchestration 還活著
+
+通常可恢復。
+
+---
+
+## Executor 掛掉（更嚴重）
+
+影響：
+
+```text id="m1pvpp"
+整個 workflow orchestration 停止
+```
+
+包括：
+
+* retry
+* dependency
+* state transition
+* DAG progression
+
+全部停。
+
+---
+
+# 所以監控重點不同
+
+---
+
+# Worker 要看
+
+```text id="3h5sv5"
+CPU
+Memory
+Pending Jobs
+Queue Duration
+Running Jobs
+```
+
+---
+
+# Executor 要看
+
+```text id="1nrh7o"
+Execution Delay
+Resubmit Count
+Execution Throughput
+Queue Lag
+```
+
+---
+
+# 最後一句總結
+
+```text id="u9fxzx"
+Executor 決定「下一步做什麼」
+Worker 負責「真正把事情做完」
+```
+
+這就是 Kestra 核心架構。
